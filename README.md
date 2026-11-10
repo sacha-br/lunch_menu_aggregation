@@ -40,7 +40,7 @@
 3. Запустите сбор данных и генерацию страницы:
    ```bash
    python lunch_parser.py
-   python generate_page.py
+   python html_make.py
    ```
 
 4. Откройте появившийся файл `index.html` или `view_menu.html` в любом браузере.
