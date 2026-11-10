@@ -16,7 +16,6 @@ class BaseParser:
         try:
             response = requests.get(self.url, headers=self.headers, timeout=15)
             response.raise_for_status()
-            # Автоматически определяем корректную кодировку (актуально для кириллицы)
             response.encoding = response.apparent_encoding
             return BeautifulSoup(response.text, "html.parser")
         except Exception as e:
@@ -30,7 +29,7 @@ class BaseParser:
 
 
 class PizzaTempoParser(BaseParser):
-    """Парсер для сайта pizzatempo.by"""
+    """Парсер для сайта pizzatempo.by на базе структуры .item_product"""
 
     def parse(self):
         soup = self.get_soup()
@@ -38,30 +37,46 @@ class PizzaTempoParser(BaseParser):
             return []
 
         menu_items = []
-        headers = soup.find_all("h3")
+        cards = soup.find_all("div", class_="item_product")
 
-        for h3 in headers:
-            title = h3.get_text(strip=True)
-            if (
-                not title
-                or "Выберите город" in title
-                or "Доставка из" in title
-            ):
+        for card in cards:
+            title_tag = card.find("h3")
+            if not title_tag:
                 continue
+            title = title_tag.get_text(strip=True)
 
-            parent = h3.parent
-            desc_tag = parent.find("p") or h3.find_next_sibling("p")
+            desc_tag = card.find("div", class_="composition")
             description = desc_tag.get_text(strip=True) if desc_tag else ""
 
-            # Ищем цену (в структуре сайта обычно указана в формате "Xр. Yк.")
-            price_tag = parent.find(
-                text=lambda t: "р." in t or "BYN" in t
-            ) or parent.find("span", class_="price")
-            price = price_tag.strip() if price_tag else "Не указана"
+            size_tag = card.find("div", class_="size")
+            weight = size_tag.get_text(strip=True) if size_tag else ""
 
-            menu_items.append(
-                {"title": title, "description": description, "price": price}
-            )
+            img_tag = card.find("div", class_="photo").find("img") if card.find("div", class_="photo") else None
+            image_url = img_tag.get("src") if img_tag else ""
+            if image_url and image_url.startswith("/"):
+                image_url = f"https://pizzatempo.by{image_url}"
+
+            price_takeaway_tag = card.find("div", class_="price_takeaway")
+            price_takeaway = "Не указана"
+            if price_takeaway_tag and price_takeaway_tag.find("span", class_="price_byn"):
+                price_takeaway = f"{price_takeaway_tag.find('span', class_='price_byn').get('data-price')} BYN"
+
+            price_delivery = "Не указана"
+            price_wrappers = card.find_all("div", class_="price_wrapper")
+            for wrap in price_wrappers:
+                if "price_takeaway" not in wrap.get("class", []):
+                    span_btn = wrap.find("span", class_="price_byn")
+                    if span_btn:
+                        price_delivery = f"{span_btn.get('data-price')} BYN"
+
+            menu_items.append({
+                "title": title,
+                "description": description,
+                "weight": weight,
+                "price_takeaway": price_takeaway,
+                "price_delivery": price_delivery,
+                "image": image_url
+            })
 
         return menu_items
 
@@ -75,36 +90,52 @@ class VasilkiParser(BaseParser):
             return []
 
         menu_items = []
-        # Платформа идентична Пицца Темпо, парсинг аналогичен
-        headers = soup.find_all("h3")
+        cards = soup.find_all("div", class_="item_product")
 
-        for h3 in headers:
-            title = h3.get_text(strip=True)
-            if (
-                not title
-                or "Выберите город" in title
-                or "Доставка из" in title
-            ):
+        for card in cards:
+            title_tag = card.find("h3")
+            if not title_tag:
                 continue
+            title = title_tag.get_text(strip=True)
 
-            parent = h3.parent
-            desc_tag = parent.find("p") or h3.find_next_sibling("p")
+            desc_tag = card.find("div", class_="composition")
             description = desc_tag.get_text(strip=True) if desc_tag else ""
 
-            price_tag = parent.find(
-                text=lambda t: "р." in t or "BYN" in t
-            ) or parent.find("span", class_="price")
-            price = price_tag.strip() if price_tag else "Не указана"
+            size_tag = card.find("div", class_="size")
+            weight = size_tag.get_text(strip=True) if size_tag else ""
 
-            menu_items.append(
-                {"title": title, "description": description, "price": price}
-            )
+            img_tag = card.find("div", class_="photo").find("img") if card.find("div", class_="photo") else None
+            image_url = img_tag.get("src") if img_tag else ""
+            if image_url and image_url.startswith("/"):
+                image_url = f"https://vasilki.by{image_url}"
+
+            price_takeaway_tag = card.find("div", class_="price_takeaway")
+            price_takeaway = "Не указана"
+            if price_takeaway_tag and price_takeaway_tag.find("span", class_="price_byn"):
+                price_takeaway = f"{price_takeaway_tag.find('span', class_='price_byn').get('data-price')} BYN"
+
+            price_delivery = "Не указана"
+            price_wrappers = card.find_all("div", class_="price_wrapper")
+            for wrap in price_wrappers:
+                if "price_takeaway" not in wrap.get("class", []):
+                    span_btn = wrap.find("span", class_="price_byn")
+                    if span_btn:
+                        price_delivery = f"{span_btn.get('data-price')} BYN"
+
+            menu_items.append({
+                "title": title,
+                "description": description,
+                "weight": weight,
+                "price_takeaway": price_takeaway,
+                "price_delivery": price_delivery,
+                "image": image_url
+            })
 
         return menu_items
 
 
 class EdaMarketParser(BaseParser):
-    """Парсер для сайта edamarket.by"""
+    """Парсер для сайта edamarket.by на базе структуры .product-thumb"""
 
     def parse(self):
         soup = self.get_soup()
@@ -112,39 +143,53 @@ class EdaMarketParser(BaseParser):
             return []
 
         menu_items = []
-        headers = soup.find_all("h4")
+        cards = soup.find_all("div", class_="product-thumb")
 
-        for item in headers:
-            title = item.get_text(strip=True)
-            if not title:
+        for card in cards:
+            caption = card.find("div", class_="caption")
+            if not caption:
                 continue
 
-            parent = item.parent
+            # Название блюда
+            title_tag = caption.find("h4")
+            if not title_tag:
+                continue
+            title = title_tag.get_text(strip=True)
 
-            # Извлечение описания состава
-            desc_text = item.next_sibling
-            description = (
-                desc_text.strip()
-                if desc_text and isinstance(desc_text, str)
-                else ""
-            )
-            if not description:
-                p_tag = parent.find("p")
-                description = p_tag.get_text(strip=True) if p_tag else ""
+            # Описание/Состав (первый тег p внутри caption)
+            desc_tag = caption.find("p")
+            description = desc_tag.get_text(strip=True) if desc_tag else ""
 
-            # Извлечение стоимости
-            price_tag = parent.find("strong") or parent.find(
-                text=lambda t: "BYN" in t
-            )
-            price = (
-                price_tag.get_text(strip=True)
-                if hasattr(price_tag, "get_text")
-                else (price_tag.strip() if price_tag else "Не указана")
-            )
+            # Вес/Выход из таблицы характеристик
+            weight = ""
+            table = caption.find("table")
+            if table:
+                for row in table.find_all("tr"):
+                    cells = row.find_all("td")
+                    if len(cells) == 2 and "Выход" in cells[0].get_text():
+                        weight = f"{cells[1].get_text(strip=True)} г"
+                        break
 
-            menu_items.append(
-                {"title": title, "description": description, "price": price}
-            )
+            # Цена
+            price_tag = caption.find(class_="price")
+            price = price_tag.get_text(strip=True) if price_tag else "Не указана"
+
+            # Ссылка на изображение
+            image_url = ""
+            img_container = card.find("div", class_="image")
+            if img_container:
+                img_tag = img_container.find("img")
+                if img_tag:
+                    image_url = img_tag.get("src", "")
+
+            menu_items.append({
+                "title": title,
+                "description": description,
+                "weight": weight,
+                "price_takeaway": price,
+                "price_delivery": price,  # Для единого формата выгрузки
+                "image": image_url
+            })
 
         return menu_items
 
@@ -158,51 +203,40 @@ class TerraPizzaParser(BaseParser):
             return []
 
         menu_items = []
-        # Находим все контейнеры карточек блюд
         cards = soup.find_all("div", class_="menu-card")
 
         for card in cards:
-            # Парсинг названия
             title_tag = card.find(class_="menu-card__title")
             if not title_tag:
                 continue
             title = title_tag.get_text(strip=True)
 
-            # Парсинг описания состава
             desc_tag = card.find(class_="menu-card__notice")
             description = desc_tag.get_text(strip=True) if desc_tag else ""
 
-            # Извлечение чистого числового значения цены и добавление валюты
             price_val_tag = card.find(class_="price-val")
-            if price_val_tag:
-                price_num = price_val_tag.get_text(strip=True)
-                # Безопасно дописываем BYN на основе разметки
-                price = f"{price_num} BYN"
-            else:
-                price = "Не указана"
+            price = f"{price_val_tag.get_text(strip=True)} BYN" if price_val_tag else "Не указана"
 
-            # Опционально: собираем вес блюда, если он необходим
             weight_tag = card.find(class_="product-weight")
             weight = weight_tag.get_text(strip=True) if weight_tag else ""
 
-            # Формируем итоговый объект (можно добавить 'weight': weight при расширении)
-            menu_items.append(
-                {
-                    "title": title,
-                    "description": (
-                        f"{description} ({weight})"
-                        if description and weight
-                        else (description or weight)
-                    ),
-                    "price": price,
-                }
-            )
+            img_tag = card.find("div", class_="menu-card__img").find("img") if card.find("div", class_="menu-card__img") else None
+            image_url = img_tag.get("src") if img_tag else ""
+
+            menu_items.append({
+                "title": title,
+                "description": description,
+                "weight": weight,
+                "price_takeaway": price,
+                "price_delivery": price,
+                "image": image_url
+            })
 
         return menu_items
 
 
 # =====================================================================
-# КАРТА ПАРСЕРОВ (Для добавления нового сайта — просто внесите его сюда)
+# КАРТА ПАРСЕРОВ
 # =====================================================================
 PARSERS_MAP = {
     "https://www.pizzatempo.by/menu/obed.html": PizzaTempoParser,
@@ -222,18 +256,17 @@ def main():
         parser = ParserClass(url)
         menu = parser.parse()
 
-        # Сохраняем результат, используя URL как ключ
         all_menus[url] = menu
         print(f"-> Успешно собрано блюд: {len(menu)}")
         print("-" * 50)
 
-    # Сохраняем все собранные данные в один файл конфигурации JSON
     output_filename = "all_lunch_menus.json"
     with open(output_filename, "w", encoding="utf-8") as f:
         json.dump(all_menus, f, ensure_ascii=False, indent=4)
 
-    print(f"\n[ГОТОВО] Все меню успешно сохранены в файл: {output_filename}")
+    print(f"\n[ГОТОВО] Все структурированные меню сохранены в: {output_filename}")
 
 
 if __name__ == "__main__":
     main()
+ 
