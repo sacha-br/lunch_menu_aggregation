@@ -1,0 +1,69 @@
+name: Deploy Lunch Menu to GitHub Pages
+
+on:
+  schedule:
+    # Запуск с понедельника по пятницу в 07:15 UTC (10:15 по Минску)
+    - cron: '15 7 * * 1-5'
+  
+  # Оставляем ручной запуск кнопкой из веб-интерфейса
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: 'pages'
+  cancel-in-progress: true
+
+jobs:
+  scrape-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: |
+          pip install requests beautifulsoup4
+
+      - name: Run Scraper Script
+        run: python lunch_parser.py
+
+      - name: Run HTML Generator Script
+        run: python html_make.py
+
+      - name: Prepare artifact directory
+        run: |
+          # Создаем изолированную папку для публикации
+          mkdir public
+          
+          # Переименовываем сгенерированный файл в index.html и переносим в public
+          mv view_menu.html public/index.html
+          
+          # Опционально: переносим json, если фронтенд в будущем будет читать его через fetch
+          mv all_lunch_menus.json public/all_lunch_menus.json
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Указываем путь к нашей созданной папке
+          path: './public'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
